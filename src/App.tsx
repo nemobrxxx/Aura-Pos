@@ -18,22 +18,28 @@ import {
   Settings,
   Store,
   Menu,
-  X
+  X,
+  Share2,
+  Send,
+  Save,
+  CheckCircle2
 } from 'lucide-react';
 import { dbService } from './services/dbService';
-import { Product, Sale, SaleItem } from './types';
+import { Product, Sale, SaleItem, StoreConfig } from './types';
 import { cn, formatCurrency, formatDate, generateId } from './lib/utils';
 
 // --- Sub-components will be defined here or imported ---
 
-type View = 'pos' | 'inventory' | 'history';
+type View = 'pos' | 'inventory' | 'history' | 'settings';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<View>('pos');
   const [products, setProducts] = useState<Product[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [cart, setCart] = useState<SaleItem[]>([]);
+  const [storeConfig, setStoreConfig] = useState<StoreConfig | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [lastCompletedSale, setLastCompletedSale] = useState<Sale | null>(null);
 
   useEffect(() => {
     loadData();
@@ -42,6 +48,9 @@ export default function App() {
   async function loadData() {
     setIsLoading(true);
     try {
+      const config = await dbService.getStoreConfig();
+      setStoreConfig(config);
+
       let p = await dbService.getProducts();
       let s = await dbService.getSales();
       
@@ -134,57 +143,7 @@ export default function App() {
     await dbService.saveSale(newSale);
     await loadData();
     setCart([]);
-    // In a real app, trigger print here
-    handlePrintSale(newSale);
-  };
-
-  const handlePrintSale = (sale: Sale) => {
-    // Hidden printing logic using window.print()
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
-
-    const itemsHtml = sale.items.map(item => `
-      <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-        <span>${item.quantity}x ${item.productName}</span>
-        <span>${formatCurrency(item.subtotal)}</span>
-      </div>
-    `).join('');
-
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>Recibo Aura POS</title>
-          <style>
-            body { font-family: monospace; width: 80mm; padding: 10px; margin: 0 auto; color: #000; }
-            .header { text-align: center; margin-bottom: 20px; }
-            .divider { border-bottom: 1px dashed #000; margin: 10px 0; }
-            .footer { text-align: center; margin-top: 20px; font-size: 10px; }
-            @media print { body { width: 80mm; } }
-          </style>
-        </head>
-        <body onload="window.print(); window.close();">
-          <div class="header">
-            <h3>AURA POS</h3>
-            <p>Variedades & Cia</p>
-            <p>${formatDate(sale.timestamp)}</p>
-          </div>
-          <div class="divider"></div>
-          <div>${itemsHtml}</div>
-          <div class="divider"></div>
-          <div style="display: flex; justify-content: space-between; font-weight: bold;">
-            <span>TOTAL</span>
-            <span>${formatCurrency(sale.total)}</span>
-          </div>
-          <p>Pagamento: ${sale.paymentMethod.toUpperCase()}</p>
-          <div class="divider"></div>
-          <div class="footer">
-            <p>Obrigado pela preferência!</p>
-            <p>CNPJ: 00.000.000/0001-00</p>
-          </div>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
+    setLastCompletedSale(newSale);
   };
 
   return (
@@ -196,7 +155,7 @@ export default function App() {
             <Store className="w-6 h-6 text-indigo-700" />
           </div>
           <h1 className="text-xl font-bold tracking-tight uppercase">
-            Aura POS <span className="text-indigo-200 font-normal">| Loja Matriz</span>
+            {storeConfig?.name || 'Aura POS'} <span className="text-indigo-200 font-normal">| {storeConfig?.subtitle || 'Loja Matriz'}</span>
           </h1>
         </div>
         <div className="hidden md:flex items-center gap-6">
@@ -224,7 +183,7 @@ export default function App() {
               <NavButton icon={ShoppingCart} active={currentView === 'pos'} onClick={() => setCurrentView('pos')} label="Vendas" />
               <NavButton icon={Package} active={currentView === 'inventory'} onClick={() => setCurrentView('inventory')} label="Estoque" />
               <NavButton icon={History} active={currentView === 'history'} onClick={() => setCurrentView('history')} label="Relatórios" />
-              <NavButton icon={Settings} active={false} onClick={() => {}} label="Ajustes" />
+              <NavButton icon={Settings} active={currentView === 'settings'} onClick={() => setCurrentView('settings')} label="Ajustes" />
             </div>
           </div>
         </section>
@@ -241,6 +200,9 @@ export default function App() {
                 onClearCart={clearCart}
                 onCompleteSale={completeSale}
                 updateCartQuantity={updateCartQuantity}
+                lastCompletedSale={lastCompletedSale}
+                setLastCompletedSale={setLastCompletedSale}
+                storeConfig={storeConfig}
               />
             )}
 
@@ -258,15 +220,27 @@ export default function App() {
                 sales={sales} 
               />
             )}
+
+            {currentView === 'settings' && storeConfig && (
+              <SettingsView 
+                key="settings"
+                config={storeConfig}
+                onSave={async (newConfig) => {
+                  await dbService.saveStoreConfig(newConfig);
+                  setStoreConfig(newConfig);
+                }}
+              />
+            )}
           </AnimatePresence>
         </div>
       </main>
 
       {/* Bottom Navigation (Mobile) */}
-      <nav className="md:hidden fixed bottom-6 left-1/2 -translate-x-1/2 bg-white/80 backdrop-blur-lg border border-slate-200/50 rounded-3xl shadow-2xl px-6 py-3 flex items-center gap-8 z-50">
+      <nav className="md:hidden fixed bottom-6 left-1/2 -translate-x-1/2 bg-white/80 backdrop-blur-lg border border-slate-200/50 rounded-3xl shadow-2xl px-6 py-3 flex items-center gap-6 z-50">
         <NavIcon icon={ShoppingCart} active={currentView === 'pos'} onClick={() => setCurrentView('pos')} />
         <NavIcon icon={Package} active={currentView === 'inventory'} onClick={() => setCurrentView('inventory')} />
         <NavIcon icon={History} active={currentView === 'history'} onClick={() => setCurrentView('history')} />
+        <NavIcon icon={Settings} active={currentView === 'settings'} onClick={() => setCurrentView('settings')} />
       </nav>
     </div>
   );
@@ -311,7 +285,7 @@ function NavIcon({ icon: Icon, active, onClick, label }: { icon: any, active: bo
 
 // --- View Components ---
 
-function POSView({ products, onAddToCart, cart, onRemoveFromCart, onClearCart, onCompleteSale, updateCartQuantity }: any) {
+function POSView({ products, onAddToCart, cart, onRemoveFromCart, onClearCart, onCompleteSale, updateCartQuantity, lastCompletedSale, setLastCompletedSale, storeConfig }: any) {
   const [search, setSearch] = useState('');
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
 
@@ -321,6 +295,30 @@ function POSView({ products, onAddToCart, cart, onRemoveFromCart, onClearCart, o
   );
 
   const total = cart.reduce((sum: number, item: any) => sum + item.subtotal, 0);
+
+  const handleShareWhatsApp = () => {
+    if (!lastCompletedSale) return;
+    
+    let message = `*${storeConfig?.name || 'Comprovante Loja'}*\n`;
+    message += `${storeConfig?.subtitle || ''}\n`;
+    message += `--------------------------\n`;
+    message += `Data: ${formatDate(lastCompletedSale.timestamp)}\n`;
+    message += `Pedido: #${lastCompletedSale.id.toUpperCase()}\n`;
+    message += `--------------------------\n`;
+    
+    lastCompletedSale.items.forEach((item: any) => {
+      message += `${item.quantity}x ${item.productName} - ${formatCurrency(item.subtotal)}\n`;
+    });
+    
+    message += `--------------------------\n`;
+    message += `*TOTAL: ${formatCurrency(lastCompletedSale.total)}*\n`;
+    message += `Pagamento: ${lastCompletedSale.paymentMethod.toUpperCase()}\n`;
+    message += `--------------------------\n`;
+    message += `${storeConfig?.footerMessage || 'Obrigado!'}\n`;
+    
+    const encodedMessage = encodeURIComponent(message);
+    window.open(`https://wa.me/${storeConfig?.phone}?text=${encodedMessage}`, '_blank');
+  };
 
   return (
     <motion.div 
@@ -467,7 +465,10 @@ function POSView({ products, onAddToCart, cart, onRemoveFromCart, onClearCart, o
         <div className="flex-1 p-4 bg-slate-100 overflow-hidden relative">
           <div className="bg-white w-full h-full shadow-inner p-6 text-[10px] font-mono flex flex-col gap-1 overflow-hidden border border-slate-200">
             <div className="text-center border-b border-slate-200 pb-3 mb-3 uppercase font-bold text-[12px] tracking-tight">
-              AURA POS VARIEDADES
+              {storeConfig?.name || 'AURA POS'}
+            </div>
+            <div className="text-center text-[8px] -mt-2 mb-2 opacity-60">
+              {storeConfig?.subtitle || 'Variedades & Cia'}
             </div>
             <div className="flex justify-between">
               <span>DATA:</span>
@@ -494,7 +495,7 @@ function POSView({ products, onAddToCart, cart, onRemoveFromCart, onClearCart, o
               <span>{formatCurrency(total)}</span>
             </div>
             <div className="text-center mt-6 text-slate-400 text-[8px]">
-              Obrigado pela preferência!
+              {storeConfig?.footerMessage || 'Obrigado pela preferência!'}
             </div>
           </div>
           <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-slate-100 to-transparent"></div>
@@ -542,6 +543,86 @@ function POSView({ products, onAddToCart, cart, onRemoveFromCart, onClearCart, o
                     <span className="font-black text-3xl">{formatCurrency(total)}</span>
                   </div>
                 </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Success Modal Overlay */}
+      <AnimatePresence>
+        {lastCompletedSale && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-indigo-950/80 backdrop-blur-md z-[200]"
+            />
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="fixed inset-4 md:inset-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-[400px] h-fit bg-white rounded-3xl p-8 z-[201] shadow-2xl text-center"
+            >
+              <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                <CheckCircle2 size={40} />
+              </div>
+              <h2 className="text-2xl font-bold mb-2">Venda Concluída!</h2>
+              <p className="text-slate-500 text-sm mb-8">Deseja compartilhar o comprovante?</p>
+              
+              <div className="grid grid-cols-1 gap-3">
+                <button 
+                  onClick={handleShareWhatsApp}
+                  className="w-full bg-green-500 hover:bg-green-600 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-3 shadow-lg transition-all active:scale-95"
+                >
+                  <Send size={20} /> Enviar via WhatsApp
+                </button>
+                <button 
+                  onClick={() => {
+                    const printWindow = window.open('', '_blank');
+                    if(printWindow) {
+                         let itemsHtml = lastCompletedSale.items.map(item => `
+                          <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                            <span>${item.quantity}x ${item.productName}</span>
+                            <span>${formatCurrency(item.subtotal)}</span>
+                          </div>
+                        `).join('');
+                        printWindow.document.write(`
+                          <html>
+                            <body onload="window.print(); window.close();">
+                              <div style="font-family: monospace; width: 80mm; padding: 10px;">
+                                <h3 style="text-align:center">${storeConfig?.name || 'AURA POS'}</h3>
+                                <p style="text-align:center">${storeConfig?.subtitle || ''}</p>
+                                <hr/>
+                                ${itemsHtml}
+                                <hr/>
+                                <div style="display:flex; justify-content:space-between; font-weight:bold;">
+                                  <span>TOTAL</span>
+                                  <span>${formatCurrency(lastCompletedSale.total)}</span>
+                                </div>
+                                <hr/>
+                                <div style="text-align:center; font-size:10px;">
+                                  <p>${storeConfig?.footerMessage || ''}</p>
+                                  <p>${storeConfig?.cnpj || ''}</p>
+                                </div>
+                              </div>
+                            </body>
+                          </html>
+                        `);
+                        printWindow.document.close();
+                    }
+                  }}
+                  className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-4 rounded-2xl font-bold flex items-center justify-center gap-3 transition-all active:scale-95"
+                >
+                  <Printer size={20} /> Imprimir Recibo
+                </button>
+                <button 
+                  onClick={() => setLastCompletedSale(null)}
+                  className="w-full py-4 text-slate-400 font-bold text-sm hover:text-slate-600 transition-colors"
+                >
+                  Nova Venda
+                </button>
               </div>
             </motion.div>
           </>
@@ -794,6 +875,118 @@ function SalesHistoryView({ sales }: any) {
             </div>
           )}
         </div>
+      </div>
+    </motion.div>
+  );
+}
+
+function SettingsView({ config, onSave }: { config: StoreConfig, onSave: (c: StoreConfig) => Promise<void> }) {
+  const [formData, setFormData] = useState(config);
+  const [isSaving, setIsSaving] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSaving(true);
+    await onSave(formData);
+    setIsSaving(false);
+    setShowSuccess(true);
+    setTimeout(() => setShowSuccess(false), 3000);
+  };
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0, scale: 0.98 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.98 }}
+      className="max-w-2xl mx-auto py-8"
+    >
+      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="bg-indigo-700 p-8 text-white">
+          <div className="flex items-center gap-4 mb-2">
+            <Settings className="w-8 h-8" />
+            <h2 className="text-2xl font-bold">Configurações da Loja</h2>
+          </div>
+          <p className="text-indigo-100 text-sm">Personalize os dados que aparecem no seu recibo digital e impresso.</p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-8 space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="col-span-full">
+              <label className="block text-xs font-black uppercase text-slate-400 mb-2">Nome Comercial</label>
+              <input 
+                value={formData.name}
+                onChange={e => setFormData({ ...formData, name: e.target.value })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:border-indigo-600 transition-colors"
+                placeholder="Ex: Aura POS Variedades"
+              />
+            </div>
+            <div className="col-span-full">
+              <label className="block text-xs font-black uppercase text-slate-400 mb-2">Subtítulo / Slogan</label>
+              <input 
+                value={formData.subtitle}
+                onChange={e => setFormData({ ...formData, subtitle: e.target.value })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:border-indigo-600 transition-colors"
+                placeholder="Ex: O melhor preço da região"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-black uppercase text-slate-400 mb-2">CNPJ</label>
+              <input 
+                value={formData.cnpj}
+                onChange={e => setFormData({ ...formData, cnpj: e.target.value })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:border-indigo-600 transition-colors"
+                placeholder="00.000.000/0001-00"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-black uppercase text-slate-400 mb-2">WhatsApp / Telefone</label>
+              <input 
+                value={formData.phone}
+                onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:border-indigo-600 transition-colors"
+                placeholder="5511999999999"
+              />
+            </div>
+            <div className="col-span-full">
+              <label className="block text-xs font-black uppercase text-slate-400 mb-2">Endereço</label>
+              <input 
+                value={formData.address}
+                onChange={e => setFormData({ ...formData, address: e.target.value })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:border-indigo-600 transition-colors"
+                placeholder="Rua das Flores, 123 - Centro"
+              />
+            </div>
+            <div className="col-span-full">
+              <label className="block text-xs font-black uppercase text-slate-400 mb-2">Mensagem do Rodapé</label>
+              <textarea 
+                value={formData.footerMessage}
+                onChange={e => setFormData({ ...formData, footerMessage: e.target.value })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:border-indigo-600 transition-colors h-24 resize-none"
+                placeholder="Obrigado pela preferência! Volte sempre."
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between pt-4">
+            {showSuccess && (
+              <motion.span 
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="text-green-600 font-bold text-sm flex items-center gap-2"
+              >
+                <CheckCircle2 size={16} /> Configurações salvas!
+              </motion.span>
+            )}
+            <button 
+              type="submit"
+              disabled={isSaving}
+              className="ml-auto bg-indigo-600 text-white px-8 py-3 rounded-xl font-bold shadow-lg hover:bg-indigo-700 transition-all flex items-center gap-2 disabled:opacity-50"
+            >
+              {isSaving ? 'Salvando...' : <><Save size={20} /> Salvar Alterações</>}
+            </button>
+          </div>
+        </form>
       </div>
     </motion.div>
   );

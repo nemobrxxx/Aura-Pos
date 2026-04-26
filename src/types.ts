@@ -32,4 +32,13 @@ export interface Sale {
   discount: number;
 }
 
+export interface StoreConfig {
+  name: string;
+  subtitle: string;
+  cnpj: string;
+  address: string;
+  phone: string;
+  footerMessage: string;
+}
+
 export type OperationType = 'create' | 'update' | 'delete' | 'list' | 'get' | 'write';

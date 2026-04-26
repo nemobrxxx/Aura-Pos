@@ -4,17 +4,17 @@
  */
 
 import { openDB, IDBPDatabase } from 'idb';
-import { Product, Sale } from '../types';
+import { Product, Sale, StoreConfig } from '../types';
 
 const DB_NAME = 'aura_pos_db';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // Increment version
 
 class DatabaseService {
   private db: Promise<IDBPDatabase>;
 
   constructor() {
     this.db = openDB(DB_NAME, DB_VERSION, {
-      upgrade(db) {
+      upgrade(db, oldVersion) {
         // Products Store
         if (!db.objectStoreNames.contains('products')) {
           const productStore = db.createObjectStore('products', { keyPath: 'id' });
@@ -27,8 +27,33 @@ class DatabaseService {
           const saleStore = db.createObjectStore('sales', { keyPath: 'id' });
           saleStore.createIndex('timestamp', 'timestamp', { unique: false });
         }
+
+        // Settings Store
+        if (!db.objectStoreNames.contains('settings')) {
+          db.createObjectStore('settings');
+        }
       },
     });
+  }
+
+  // --- Settings ---
+
+  async getStoreConfig(): Promise<StoreConfig> {
+    const db = await this.db;
+    const config = await db.get('settings', 'store_config');
+    return config || {
+      name: 'Aura POS',
+      subtitle: 'Variedades & Cia',
+      cnpj: '00.000.000/0001-00',
+      address: 'Rua Principal, 123',
+      phone: '5511999999999',
+      footerMessage: 'Obrigado pela preferência!'
+    };
+  }
+
+  async saveStoreConfig(config: StoreConfig): Promise<void> {
+    const db = await this.db;
+    await db.put('settings', config, 'store_config');
   }
 
   // --- Products ---
