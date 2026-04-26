@@ -1,0 +1,6 @@
+{
+  "name": "Aura POS",
+  "description": "Sistema de PDV e Gestão de Estoque profissional com suporte a impressão de comprovantes.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["inventory_management", "sales_tracking", "receipt_printing"]
+}
