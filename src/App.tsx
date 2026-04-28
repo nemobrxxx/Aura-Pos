@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   ShoppingCart, 
@@ -22,9 +22,15 @@ import {
   Share2,
   Send,
   Save,
-  CheckCircle2
+  CheckCircle2,
+  FileDown,
+  LogIn,
+  LogOut,
+  User as UserIcon
 } from 'lucide-react';
-import { dbService } from './services/dbService';
+import html2pdf from 'html2pdf.js';
+import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User } from 'firebase/auth';
+import { dbService, auth } from './services/dbService';
 import { Product, Sale, SaleItem, StoreConfig } from './types';
 import { cn, formatCurrency, formatDate, generateId } from './lib/utils';
 
@@ -33,6 +39,7 @@ import { cn, formatCurrency, formatDate, generateId } from './lib/utils';
 type View = 'pos' | 'inventory' | 'history' | 'settings';
 
 export default function App() {
+  const [user, setUser] = useState<User | null>(null);
   const [currentView, setCurrentView] = useState<View>('pos');
   const [products, setProducts] = useState<Product[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
@@ -42,7 +49,15 @@ export default function App() {
   const [lastCompletedSale, setLastCompletedSale] = useState<Sale | null>(null);
 
   useEffect(() => {
-    loadData();
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      if (currentUser) {
+        loadData();
+      } else {
+        setIsLoading(false);
+      }
+    });
+    return () => unsubscribe();
   }, []);
 
   async function loadData() {
@@ -51,22 +66,9 @@ export default function App() {
       const config = await dbService.getStoreConfig();
       setStoreConfig(config);
 
-      let p = await dbService.getProducts();
-      let s = await dbService.getSales();
+      const p = await dbService.getProducts();
+      const s = await dbService.getSales();
       
-      if (p.length === 0) {
-        const samples: Product[] = [
-          { id: '1', name: 'Arroz 5kg', sku: 'ARRZ001', price: 25.90, stock: 50, category: 'Alimentos', createdAt: Date.now(), updatedAt: Date.now() },
-          { id: '2', name: 'Leite Integral 1L', sku: 'LEIT002', price: 5.50, stock: 120, category: 'Laticínios', createdAt: Date.now(), updatedAt: Date.now() },
-          { id: '3', name: 'Sabão em Pó 1kg', sku: 'SABA003', price: 12.00, stock: 30, category: 'Limpeza', createdAt: Date.now(), updatedAt: Date.now() },
-          { id: '4', name: 'Refrigerante 2L', sku: 'REFR004', price: 8.90, stock: 15, category: 'Bebidas', createdAt: Date.now(), updatedAt: Date.now() },
-        ];
-        for (const sample of samples) {
-          await dbService.saveProduct(sample);
-        }
-        p = await dbService.getProducts();
-      }
-
       setProducts(p);
       setSales(s);
     } catch (error) {
@@ -74,6 +76,65 @@ export default function App() {
     } finally {
       setIsLoading(false);
     }
+  }
+
+  const handleLogin = async () => {
+    try {
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+    } catch (error) {
+      console.error('Login failed', error);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await auth.signOut();
+      setProducts([]);
+      setSales([]);
+      setCart([]);
+      setStoreConfig(null);
+    } catch (error) {
+      console.error('Logout failed', error);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center">
+        <div className="w-16 h-16 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p className="text-slate-500 font-bold uppercase tracking-widest text-xs">Carregando Sistema Aura...</p>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white p-12 rounded-[2.5rem] shadow-2xl border border-slate-200 max-w-md w-full text-center"
+        >
+          <div className="w-24 h-24 bg-indigo-600 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-xl rotate-3">
+            <Store className="w-12 h-12 text-white -rotate-3" />
+          </div>
+          <h1 className="text-3xl font-black text-slate-900 mb-2 uppercase tracking-tight">Aura POS</h1>
+          <p className="text-slate-500 mb-10 text-sm">Sua gestão de vendas e estoque em qualquer lugar. Entre para sincronizar seus dados na nuvem.</p>
+          
+          <button 
+            onClick={handleLogin}
+            className="w-full bg-slate-900 text-white py-5 rounded-2xl font-bold flex items-center justify-center gap-4 hover:bg-slate-800 transition-all active:scale-95 shadow-lg"
+          >
+            <LogIn size={20} /> Entrar com Google
+          </button>
+          
+          <p className="mt-8 text-[10px] text-slate-400 uppercase font-bold tracking-widest leading-relaxed">
+            Desenvolvido por Aura Tech <br/> &copy; 2026 Todos os direitos reservados
+          </p>
+        </motion.div>
+      </div>
+    );
   }
 
   const addToCart = (product: Product) => {
@@ -159,15 +220,27 @@ export default function App() {
           </h1>
         </div>
         <div className="hidden md:flex items-center gap-6">
-          <div className="text-right">
-            <p className="text-xs text-indigo-200 uppercase tracking-widest font-semibold">Operador</p>
-            <p className="text-sm font-medium">Ricardo Fullstack</p>
+          <div className="flex items-center gap-3 bg-indigo-800/50 px-4 py-2 rounded-xl border border-indigo-500/30">
+            <div className="w-8 h-8 bg-indigo-400 rounded-lg flex items-center justify-center text-white font-bold shadow-inner">
+              {user.displayName?.charAt(0) || <UserIcon size={16} />}
+            </div>
+            <div className="text-left">
+              <p className="text-[9px] text-indigo-300 uppercase tracking-widest font-black leading-tight">Operador</p>
+              <p className="text-xs font-bold text-white truncate max-w-[100px]">{user.displayName || user.email}</p>
+            </div>
+            <button 
+              onClick={handleLogout}
+              className="ml-2 p-2 hover:bg-red-500 rounded-lg transition-colors text-indigo-300 hover:text-white"
+              title="Sair"
+            >
+              <LogOut size={16} />
+            </button>
           </div>
-          <div className="h-8 w-px bg-indigo-500"></div>
+          <div className="h-8 w-px bg-indigo-500/50"></div>
           <div className="text-right">
-            <p className="text-xs text-indigo-200 uppercase tracking-widest font-semibold">Impressora</p>
-            <p className="text-sm flex items-center gap-1 font-medium">
-              <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span> Term-80mm (BT)
+            <p className="text-xs text-indigo-200 uppercase tracking-widest font-semibold">Status Sync</p>
+            <p className="text-[10px] flex items-center justify-end gap-1 font-medium text-emerald-400">
+              <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse"></span> Online
             </p>
           </div>
         </div>
@@ -236,7 +309,7 @@ export default function App() {
       </main>
 
       {/* Bottom Navigation (Mobile) */}
-      <nav className="md:hidden fixed bottom-6 left-1/2 -translate-x-1/2 bg-white/80 backdrop-blur-lg border border-slate-200/50 rounded-3xl shadow-2xl px-6 py-3 flex items-center gap-6 z-50">
+      <nav className="md:hidden fixed bottom-6 left-1/2 -translate-x-1/2 bg-white/80 backdrop-blur-lg border border-slate-200/50 rounded-3xl shadow-2xl pl-[25px] pr-[24px] pt-0 pb-[5px] h-[57px] flex items-center gap-6 z-50">
         <NavIcon icon={ShoppingCart} active={currentView === 'pos'} onClick={() => setCurrentView('pos')} />
         <NavIcon icon={Package} active={currentView === 'inventory'} onClick={() => setCurrentView('inventory')} />
         <NavIcon icon={History} active={currentView === 'history'} onClick={() => setCurrentView('history')} />
@@ -296,28 +369,65 @@ function POSView({ products, onAddToCart, cart, onRemoveFromCart, onClearCart, o
 
   const total = cart.reduce((sum: number, item: any) => sum + item.subtotal, 0);
 
-  const handleShareWhatsApp = () => {
+  const handleDownloadPDF = () => {
     if (!lastCompletedSale) return;
-    
-    let message = `*${storeConfig?.name || 'Comprovante Loja'}*\n`;
-    message += `${storeConfig?.subtitle || ''}\n`;
-    message += `--------------------------\n`;
-    message += `Data: ${formatDate(lastCompletedSale.timestamp)}\n`;
-    message += `Pedido: #${lastCompletedSale.id.toUpperCase()}\n`;
-    message += `--------------------------\n`;
-    
-    lastCompletedSale.items.forEach((item: any) => {
-      message += `${item.quantity}x ${item.productName} - ${formatCurrency(item.subtotal)}\n`;
-    });
-    
-    message += `--------------------------\n`;
-    message += `*TOTAL: ${formatCurrency(lastCompletedSale.total)}*\n`;
-    message += `Pagamento: ${lastCompletedSale.paymentMethod.toUpperCase()}\n`;
-    message += `--------------------------\n`;
-    message += `${storeConfig?.footerMessage || 'Obrigado!'}\n`;
-    
-    const encodedMessage = encodeURIComponent(message);
-    window.open(`https://wa.me/${storeConfig?.phone}?text=${encodedMessage}`, '_blank');
+
+    const element = document.createElement('div');
+    element.style.padding = '40px';
+    element.style.fontFamily = 'monospace';
+    element.style.color = '#000';
+    element.style.backgroundColor = '#fff';
+
+    const itemsHtml = lastCompletedSale.items.map(item => `
+      <div style="display: flex; justify-content: space-between; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 5px;">
+        <span style="flex: 1;">${item.quantity}x ${item.productName}</span>
+        <span style="margin-left: 20px;">${formatCurrency(item.subtotal)}</span>
+      </div>
+    `).join('');
+
+    element.innerHTML = `
+      <div style="max-width: 400px; margin: 0 auto;">
+        <div style="text-align:center; margin-bottom: 30px;">
+          <h1 style="margin: 0; font-size: 24px; color: #4f46e5;">${storeConfig?.name || 'AURA POS'}</h1>
+          <p style="margin: 5px 0; color: #666; font-size: 14px;">${storeConfig?.subtitle || ''}</p>
+          <p style="margin: 5px 0; color: #999; font-size: 12px;">CNPJ: ${storeConfig?.cnpj || ''}</p>
+        </div>
+        
+        <div style="margin-bottom: 20px; font-size: 12px; color: #333;">
+          <p><strong>DATA:</strong> ${formatDate(lastCompletedSale.timestamp)}</p>
+          <p><strong>PEDIDO:</strong> #${lastCompletedSale.id.toUpperCase()}</p>
+          <p><strong>PAGAMENTO:</strong> ${lastCompletedSale.paymentMethod.toUpperCase()}</p>
+        </div>
+
+        <div style="margin-bottom: 30px;">
+          <div style="display: flex; justify-content: space-between; font-weight: bold; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 10px; font-size: 12px;">
+            <span>ITEM</span>
+            <span>SUBTOTAL</span>
+          </div>
+          ${itemsHtml}
+        </div>
+
+        <div style="text-align: right; margin-top: 20px;">
+          <p style="font-size: 14px; margin-bottom: 5px;">Subtotal: ${formatCurrency(lastCompletedSale.total)}</p>
+          <h2 style="font-size: 24px; margin: 0; color: #000;">TOTAL: ${formatCurrency(lastCompletedSale.total)}</h2>
+        </div>
+
+        <div style="text-align: center; margin-top: 50px; padding-top: 20px; border-top: 1px dashed #ccc; font-size: 12px; color: #666;">
+          <p>${storeConfig?.footerMessage || 'Obrigado pela preferência!'}</p>
+          <p style="font-style: italic; margin-top: 5px;">${storeConfig?.address || ''}</p>
+        </div>
+      </div>
+    `;
+
+    const opt = {
+      margin:       10,
+      filename:     `recibo-${lastCompletedSale.id}.pdf`,
+      image:        { type: 'jpeg', quality: 0.98 },
+      html2canvas:  { scale: 2, useCORS: true },
+      jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    } as any;
+
+    html2pdf().set(opt).from(element).save();
   };
 
   return (
@@ -569,14 +679,14 @@ function POSView({ products, onAddToCart, cart, onRemoveFromCart, onClearCart, o
                 <CheckCircle2 size={40} />
               </div>
               <h2 className="text-2xl font-bold mb-2">Venda Concluída!</h2>
-              <p className="text-slate-500 text-sm mb-8">Deseja compartilhar o comprovante?</p>
+              <p className="text-slate-500 text-sm mb-8">Deseja salvar ou imprimir o comprovante?</p>
               
               <div className="grid grid-cols-1 gap-3">
                 <button 
-                  onClick={handleShareWhatsApp}
-                  className="w-full bg-green-500 hover:bg-green-600 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-3 shadow-lg transition-all active:scale-95"
+                  onClick={handleDownloadPDF}
+                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-3 shadow-lg transition-all active:scale-95"
                 >
-                  <Send size={20} /> Enviar via WhatsApp
+                  <FileDown size={20} /> Salvar como PDF
                 </button>
                 <button 
                   onClick={() => {
@@ -880,7 +990,7 @@ function SalesHistoryView({ sales }: any) {
   );
 }
 
-function SettingsView({ config, onSave }: { config: StoreConfig, onSave: (c: StoreConfig) => Promise<void> }) {
+function SettingsView({ config, onSave }: { config: StoreConfig, onSave: (c: StoreConfig) => Promise<void>, key?: string }) {
   const [formData, setFormData] = useState(config);
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
