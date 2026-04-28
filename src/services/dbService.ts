@@ -3,262 +3,110 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
-import { initializeApp } from 'firebase/app';
-import { 
-  getFirestore, 
-  collection, 
-  doc, 
-  getDocs, 
-  getDoc, 
-  setDoc, 
-  updateDoc, 
-  deleteDoc, 
-  query, 
-  where, 
-  orderBy,
-  runTransaction,
-  serverTimestamp,
-  Timestamp,
-  getDocFromServer
-} from 'firebase/firestore';
-import { getAuth, onAuthStateChanged, User } from 'firebase/auth';
-import firebaseConfig from '../../firebase-applet-config.json';
+import { openDB, IDBPDatabase } from 'idb';
 import { Product, Sale, StoreConfig } from '../types';
 
-const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
-export const auth = getAuth(app);
-
-enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
-}
-
-interface FirestoreErrorInfo {
-  error: string;
-  operationType: OperationType;
-  path: string | null;
-  authInfo: {
-    userId?: string | null;
-    email?: string | null;
-    emailVerified?: boolean | null;
-    isAnonymous?: boolean | null;
-  }
-}
-
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
-    },
-    operationType,
-    path
-  };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
-}
+const DB_NAME = 'aura_pos_db';
+const DB_VERSION = 2; // Increment version
 
 class DatabaseService {
-  // Check connection to Firestore
-  async testConnection() {
-    try {
-      await getDocFromServer(doc(db, 'test', 'connection'));
-    } catch (error) {
-      if(error instanceof Error && error.message.includes('the client is offline')) {
-        console.error("Please check your Firebase configuration.");
-      }
-    }
+  private db: Promise<IDBPDatabase>;
+
+  constructor() {
+    this.db = openDB(DB_NAME, DB_VERSION, {
+      upgrade(db, oldVersion) {
+        // Products Store
+        if (!db.objectStoreNames.contains('products')) {
+          const productStore = db.createObjectStore('products', { keyPath: 'id' });
+          productStore.createIndex('sku', 'sku', { unique: true });
+          productStore.createIndex('name', 'name', { unique: false });
+        }
+
+        // Sales Store
+        if (!db.objectStoreNames.contains('sales')) {
+          const saleStore = db.createObjectStore('sales', { keyPath: 'id' });
+          saleStore.createIndex('timestamp', 'timestamp', { unique: false });
+        }
+
+        // Settings Store
+        if (!db.objectStoreNames.contains('settings')) {
+          db.createObjectStore('settings');
+        }
+      },
+    });
   }
 
   // --- Settings ---
 
   async getStoreConfig(): Promise<StoreConfig> {
-    const user = auth.currentUser;
-    if (!user) throw new Error('User not authenticated');
-    
-    const path = `settings/${user.uid}`;
-    try {
-      const docSnap = await getDoc(doc(db, path));
-      if (docSnap.exists()) {
-        return docSnap.data() as StoreConfig;
-      }
-      return {
-        name: 'Aura POS',
-        subtitle: 'Variedades & Cia',
-        cnpj: '00.000.000/0001-00',
-        address: 'Rua Principal, 123',
-        phone: '5511999999999',
-        footerMessage: 'Obrigado pela preferência!'
-      };
-    } catch (error) {
-      handleFirestoreError(error, OperationType.GET, path);
-      throw error;
-    }
+    const db = await this.db;
+    const config = await db.get('settings', 'store_config');
+    return config || {
+      name: 'Aura POS',
+      subtitle: 'Variedades & Cia',
+      cnpj: '00.000.000/0001-00',
+      address: 'Rua Principal, 123',
+      phone: '5511999999999',
+      footerMessage: 'Obrigado pela preferência!'
+    };
   }
 
   async saveStoreConfig(config: StoreConfig): Promise<void> {
-    const user = auth.currentUser;
-    if (!user) throw new Error('User not authenticated');
-    
-    const path = `settings/${user.uid}`;
-    try {
-      await setDoc(doc(db, path), {
-        ...config,
-        ownerId: user.uid,
-        updatedAt: serverTimestamp()
-      });
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, path);
-    }
+    const db = await this.db;
+    await db.put('settings', config, 'store_config');
   }
 
   // --- Products ---
 
   async getProducts(): Promise<Product[]> {
-    const user = auth.currentUser;
-    if (!user) return [];
-    
-    const productsRef = collection(db, 'products');
-    const q = query(productsRef, where('ownerId', '==', user.uid), orderBy('name'));
-    
-    try {
-      const querySnapshot = await getDocs(q);
-      return querySnapshot.docs.map(doc => {
-        const data = doc.data();
-        return {
-          ...data,
-          id: doc.id,
-          // Convert Firestore Timestamp to number if necessary, or just keep as is if UI handles it
-          createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toMillis() : data.createdAt,
-          updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toMillis() : data.updatedAt
-        };
-      }) as Product[];
-    } catch (error) {
-      handleFirestoreError(error, OperationType.LIST, 'products');
-      return [];
-    }
+    const db = await this.db;
+    return db.getAll('products');
   }
 
   async saveProduct(product: Product): Promise<void> {
-    const user = auth.currentUser;
-    if (!user) throw new Error('User not authenticated');
-    
-    const path = `products/${product.id}`;
-    try {
-      const isNew = !product.createdAt;
-      await setDoc(doc(db, path), {
-        ...product,
-        ownerId: user.uid,
-        createdAt: isNew ? serverTimestamp() : product.createdAt,
-        updatedAt: serverTimestamp()
-      });
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, path);
-    }
+    const db = await this.db;
+    await db.put('products', {
+      ...product,
+      updatedAt: Date.now(),
+    });
   }
 
   async deleteProduct(id: string): Promise<void> {
-    const path = `products/${id}`;
-    try {
-      await deleteDoc(doc(db, path));
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, path);
-    }
+    const db = await this.db;
+    await db.delete('products', id);
   }
 
   async getProductBySku(sku: string): Promise<Product | undefined> {
-    const user = auth.currentUser;
-    if (!user) return undefined;
-    
-    const q = query(collection(db, 'products'), where('ownerId', '==', user.uid), where('sku', '==', sku));
-    try {
-      const querySnapshot = await getDocs(q);
-      if (querySnapshot.empty) return undefined;
-      const docData = querySnapshot.docs[0];
-      const data = docData.data();
-      return { 
-        ...data, 
-        id: docData.id,
-        createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toMillis() : data.createdAt,
-        updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toMillis() : data.updatedAt
-      } as Product;
-    } catch (error) {
-      handleFirestoreError(error, OperationType.GET, 'products(sku)');
-      return undefined;
-    }
+    const db = await this.db;
+    return db.getFromIndex('products', 'sku', sku);
   }
 
   // --- Sales ---
 
   async getSales(): Promise<Sale[]> {
-    const user = auth.currentUser;
-    if (!user) return [];
-    
-    const salesRef = collection(db, 'sales');
-    const q = query(salesRef, where('ownerId', '==', user.uid), orderBy('timestamp', 'desc'));
-    
-    try {
-      const querySnapshot = await getDocs(q);
-      return querySnapshot.docs.map(doc => {
-        const data = doc.data();
-        return {
-          ...data,
-          id: doc.id,
-          timestamp: data.timestamp instanceof Timestamp ? data.timestamp.toMillis() : data.timestamp
-        };
-      }) as Sale[];
-    } catch (error) {
-      handleFirestoreError(error, OperationType.LIST, 'sales');
-      return [];
-    }
+    const db = await this.db;
+    return db.getAll('sales');
   }
 
   async saveSale(sale: Sale): Promise<void> {
-    const user = auth.currentUser;
-    if (!user) throw new Error('User not authenticated');
+    const db = await this.db;
+    const tx = db.transaction(['sales', 'products'], 'readwrite');
+    
+    // 1. Record the sale
+    await tx.objectStore('sales').add(sale);
 
-    try {
-      await runTransaction(db, async (transaction) => {
-        // 1. Record the sale
-        const saleDoc = doc(collection(db, 'sales'), sale.id);
-        transaction.set(saleDoc, {
-          ...sale,
-          ownerId: user.uid,
-          timestamp: serverTimestamp()
-        });
-
-        // 2. Update stock
-        for (const item of sale.items) {
-          const productRef = doc(db, 'products', item.productId);
-          const productSnap = await transaction.get(productRef);
-          
-          if (productSnap.exists()) {
-            const product = productSnap.data() as Product;
-            transaction.update(productRef, {
-              stock: product.stock - item.quantity,
-              updatedAt: serverTimestamp()
-            });
-          }
-        }
-      });
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'sales/transaction');
+    // 2. Update stock
+    for (const item of sale.items) {
+      const product = await tx.objectStore('products').get(item.productId);
+      if (product) {
+        product.stock -= item.quantity;
+        product.updatedAt = Date.now();
+        await tx.objectStore('products').put(product);
+      }
     }
+
+    await tx.done;
   }
 }
 
 export const dbService = new DatabaseService();
-dbService.testConnection();
