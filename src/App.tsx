@@ -23,14 +23,9 @@ import {
   Send,
   Save,
   CheckCircle2,
-  FileDown,
-  LogOut,
-  LogIn
+  FileDown
 } from 'lucide-react';
 import html2pdf from 'html2pdf.js';
-import { onAuthStateChanged, signInWithPopup, signOut, User } from 'firebase/auth';
-import { db, auth, googleProvider } from './lib/firebase';
-import { getDocFromServer, doc } from 'firebase/firestore';
 import { dbService } from './services/dbService';
 import { Product, Sale, SaleItem, StoreConfig } from './types';
 import { cn, formatCurrency, formatDate, generateId } from './lib/utils';
@@ -40,7 +35,6 @@ import { cn, formatCurrency, formatDate, generateId } from './lib/utils';
 type View = 'pos' | 'inventory' | 'history' | 'settings';
 
 export default function App() {
-  const [user, setUser] = useState<User | null>(null);
   const [currentView, setCurrentView] = useState<View>('pos');
   const [products, setProducts] = useState<Product[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
@@ -50,30 +44,10 @@ export default function App() {
   const [lastCompletedSale, setLastCompletedSale] = useState<Sale | null>(null);
 
   useEffect(() => {
-    async function testConnection() {
-      try {
-        await getDocFromServer(doc(db, 'test', 'connection'));
-      } catch (error) {
-        if (error instanceof Error && error.message.includes('the client is offline')) {
-          console.error("Please check your Firebase configuration.");
-        }
-      }
-    }
-    testConnection();
-
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      if (currentUser) {
-        loadData();
-      } else {
-        setIsLoading(false);
-      }
-    });
-    return () => unsubscribe();
+    loadData();
   }, []);
 
   async function loadData() {
-    if (!auth.currentUser) return;
     setIsLoading(true);
     try {
       const config = await dbService.getStoreConfig();
@@ -175,22 +149,6 @@ export default function App() {
     setLastCompletedSale(newSale);
   };
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <motion.div 
-          animate={{ rotate: 360 }}
-          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-          className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full"
-        />
-      </div>
-    );
-  }
-
-  if (!user) {
-    return <LoginView />;
-  }
-
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden">
       {/* Header - Geometric Balance Style */}
@@ -206,15 +164,15 @@ export default function App() {
         <div className="hidden md:flex items-center gap-6">
           <div className="text-right">
             <p className="text-xs text-indigo-200 uppercase tracking-widest font-semibold">Operador</p>
-            <p className="text-sm font-medium">{user.displayName || 'Usuário'}</p>
+            <p className="text-sm font-medium">Ricardo Fullstack</p>
           </div>
           <div className="h-8 w-px bg-indigo-500"></div>
-          <button 
-            onClick={() => signOut(auth)}
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded-lg transition-colors text-sm font-bold"
-          >
-            <LogOut size={16} /> Sair
-          </button>
+          <div className="text-right">
+            <p className="text-xs text-indigo-200 uppercase tracking-widest font-semibold">Impressora</p>
+            <p className="text-sm flex items-center gap-1 font-medium">
+              <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span> Term-80mm (BT)
+            </p>
+          </div>
         </div>
       </header>
 
@@ -287,48 +245,6 @@ export default function App() {
         <NavIcon icon={History} active={currentView === 'history'} onClick={() => setCurrentView('history')} />
         <NavIcon icon={Settings} active={currentView === 'settings'} onClick={() => setCurrentView('settings')} />
       </nav>
-    </div>
-  );
-}
-
-function LoginView() {
-  const handleLogin = async () => {
-    try {
-      await signInWithPopup(auth, googleProvider);
-    } catch (error) {
-      console.error('Login failed', error);
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-indigo-900 flex items-center justify-center p-4">
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="bg-white rounded-3xl p-10 max-w-sm w-full shadow-2xl text-center"
-      >
-        <div className="w-20 h-20 bg-indigo-100 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-inner">
-          <Store className="w-10 h-10 text-indigo-600" />
-        </div>
-        <h1 className="text-3xl font-black text-slate-900 mb-4 tracking-tighter italic">AURA POS</h1>
-        <p className="text-slate-500 text-sm mb-10 leading-relaxed uppercase font-bold tracking-widest opacity-60">
-          Gerenciamento inteligente para seu negócio
-        </p>
-        
-        <button 
-          onClick={handleLogin}
-          className="w-full flex items-center justify-center gap-4 bg-white border-2 border-slate-100 py-4 rounded-2xl hover:bg-slate-50 hover:border-indigo-600 transition-all font-bold text-slate-800 shadow-xl active:scale-95 group"
-        >
-          <img src="https://www.google.com/favicon.ico" alt="Google" className="w-6 h-6 grayscale group-hover:grayscale-0 transition-all" />
-          <span>Entrar com Google</span>
-        </button>
-        
-        <div className="mt-8 pt-8 border-t border-slate-100">
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
-            Segurança Garantida por Firebase
-          </p>
-        </div>
-      </motion.div>
     </div>
   );
 }
