@@ -129,7 +129,7 @@ export default function App() {
     });
   };
 
-  const completeSale = async (paymentMethod: Sale['paymentMethod']) => {
+  const completeSale = async (paymentMethod: Sale['paymentMethod'], notes?: string) => {
     if (cart.length === 0) return;
 
     const total = cart.reduce((sum, item) => sum + item.subtotal, 0);
@@ -139,7 +139,8 @@ export default function App() {
       total,
       timestamp: Date.now(),
       paymentMethod,
-      discount: 0
+      discount: 0,
+      notes
     };
 
     await dbService.saveSale(newSale);
@@ -290,6 +291,7 @@ function NavIcon({ icon: Icon, active, onClick, label }: { icon: any, active: bo
 function POSView({ products, onAddToCart, cart, onRemoveFromCart, onClearCart, onCompleteSale, updateCartQuantity, lastCompletedSale, setLastCompletedSale, storeConfig }: any) {
   const [search, setSearch] = useState('');
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+  const [notes, setNotes] = useState('');
 
   const filteredProducts = products.filter((p: Product) => 
     p.name.toLowerCase().includes(search.toLowerCase()) || 
@@ -313,6 +315,13 @@ function POSView({ products, onAddToCart, cart, onRemoveFromCart, onClearCart, o
         <span style="margin-left: 20px;">${formatCurrency(item.subtotal)}</span>
       </div>
     `).join('');
+
+    const notesHtml = lastCompletedSale.notes ? `
+      <div style="margin-top: 20px; border-top: 1px solid #ccc; padding-top: 10px; font-size: 11px; color: #444;">
+        <p><strong>OBSERVAÇÕES:</strong></p>
+        <p style="white-space: pre-wrap;">${lastCompletedSale.notes}</p>
+      </div>
+    ` : '';
 
     element.innerHTML = `
       <div style="max-width: 400px; margin: 0 auto;">
@@ -341,7 +350,9 @@ function POSView({ products, onAddToCart, cart, onRemoveFromCart, onClearCart, o
           <h2 style="font-size: 24px; margin: 0; color: #000;">TOTAL: ${formatCurrency(lastCompletedSale.total)}</h2>
         </div>
 
-        <div style="text-align: center; margin-top: 50px; padding-top: 20px; border-top: 1px dashed #ccc; font-size: 12px; color: #666;">
+        ${notesHtml}
+
+        <div style="text-align: center; margin-top: 40px; padding-top: 20px; border-top: 1px dashed #ccc; font-size: 12px; color: #666;">
           <p>${storeConfig?.footerMessage || 'Obrigado pela preferência!'}</p>
           <p style="font-style: italic; margin-top: 5px;">${storeConfig?.address || ''}</p>
         </div>
@@ -357,6 +368,12 @@ function POSView({ products, onAddToCart, cart, onRemoveFromCart, onClearCart, o
     } as any;
 
     html2pdf().set(opt).from(element).save();
+  };
+
+  const handleComplete = (method: string) => {
+    onCompleteSale(method, notes);
+    setNotes('');
+    setIsCheckoutOpen(false);
   };
 
   return (
@@ -528,6 +545,12 @@ function POSView({ products, onAddToCart, cart, onRemoveFromCart, onClearCart, o
                 </div>
               ))}
               {cart.length === 0 && <div className="text-center py-10 opacity-20 italic">Aguardando itens...</div>}
+              {notes && (
+                <div className="mt-4 pt-2 border-t border-slate-100 text-[8px] text-slate-500">
+                  <span className="font-bold block uppercase mb-1">Obs:</span>
+                  <p className="whitespace-pre-wrap">{notes}</p>
+                </div>
+              )}
             </div>
             <div className="border-t-2 border-double border-slate-300 mt-4 pt-2 flex justify-between font-bold text-[14px]">
               <span>TOTAL</span>
@@ -568,11 +591,21 @@ function POSView({ products, onAddToCart, cart, onRemoveFromCart, onClearCart, o
 
               <div className="space-y-6">
                 <div>
-                  <label className="text-sm font-bold text-slate-500 mb-4 block">Forma de Pagamento</label>
+                  <label className="text-sm font-bold text-slate-500 mb-2 block uppercase tracking-widest text-[10px]">Observações no Comprovante</label>
+                  <textarea 
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="Ex: Entrega às 14h, Cliente fulano..."
+                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all resize-none h-24"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-sm font-bold text-slate-500 mb-4 block uppercase tracking-widest text-[10px]">Escolha a Forma de Pagamento</label>
                   <div className="grid grid-cols-3 gap-3">
-                    <PaymentOption icon="💵" label="Dinheiro" onClick={() => { onCompleteSale('cash'); setIsCheckoutOpen(false); }} />
-                    <PaymentOption icon="💳" label="Cartão" onClick={() => { onCompleteSale('card'); setIsCheckoutOpen(false); }} />
-                    <PaymentOption icon="💠" label="PIX" onClick={() => { onCompleteSale('pix'); setIsCheckoutOpen(false); }} />
+                    <PaymentOption icon="💵" label="Dinheiro" onClick={() => handleComplete('cash')} />
+                    <PaymentOption icon="💳" label="Cartão" onClick={() => handleComplete('card')} />
+                    <PaymentOption icon="💠" label="PIX" onClick={() => handleComplete('pix')} />
                   </div>
                 </div>
 
@@ -627,6 +660,14 @@ function POSView({ products, onAddToCart, cart, onRemoveFromCart, onClearCart, o
                             <span>${formatCurrency(item.subtotal)}</span>
                           </div>
                         `).join('');
+                        
+                        let notesHtml = lastCompletedSale.notes ? `
+                          <div style="margin-top: 15px; border-top: 1px dashed #000; padding-top: 5px; font-size: 12px;">
+                            <strong>OBSERVAÇÕES:</strong><br/>
+                            ${lastCompletedSale.notes}
+                          </div>
+                        ` : '';
+
                         printWindow.document.write(`
                           <html>
                             <body onload="window.print(); window.close();">
@@ -640,6 +681,7 @@ function POSView({ products, onAddToCart, cart, onRemoveFromCart, onClearCart, o
                                   <span>TOTAL</span>
                                   <span>${formatCurrency(lastCompletedSale.total)}</span>
                                 </div>
+                                ${notesHtml}
                                 <hr/>
                                 <div style="text-align:center; font-size:10px;">
                                   <p>${storeConfig?.footerMessage || ''}</p>
@@ -895,6 +937,11 @@ function SalesHistoryView({ sales }: any) {
                 <div>
                   <p className="font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">Venda #{sale.id.toUpperCase()}</p>
                   <p className="text-[10px] text-slate-400 font-mono italic">{formatDate(sale.timestamp)} • {sale.items.length} itens</p>
+                  {sale.notes && (
+                    <p className="text-[9px] text-slate-500 mt-1 line-clamp-1 italic bg-slate-100/50 px-2 py-0.5 rounded border border-slate-100 w-fit">
+                      Obs: {sale.notes}
+                    </p>
+                  )}
                 </div>
               </div>
               <div className="text-right">

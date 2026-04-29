@@ -30,6 +30,7 @@ export interface Sale {
   timestamp: number;
   paymentMethod: 'cash' | 'card' | 'pix';
   discount: number;
+  notes?: string;
 }
 
 export interface StoreConfig {
