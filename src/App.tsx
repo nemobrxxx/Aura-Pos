@@ -51,8 +51,10 @@ export default function App() {
 
   useEffect(() => {
     async function testConnection() {
+      if (!auth.currentUser) return;
       try {
-        await getDocFromServer(doc(db, 'test', 'connection'));
+        const path = `users/${auth.currentUser.uid}/config/main`;
+        await getDocFromServer(doc(db, path));
       } catch (error) {
         if (error instanceof Error && error.message.includes('the client is offline')) {
           console.error("Please check your Firebase configuration.");
@@ -161,7 +163,13 @@ export default function App() {
     const total = cart.reduce((sum, item) => sum + item.subtotal, 0);
     const newSale: Sale = {
       id: generateId(),
-      items: [...cart],
+      items: cart.map(item => ({
+        productId: item.productId,
+        productName: item.productName,
+        quantity: item.quantity,
+        priceAtSale: item.priceAtSale,
+        subtotal: item.subtotal
+      })),
       total,
       timestamp: Date.now(),
       paymentMethod,
@@ -393,71 +401,76 @@ function POSView({ products, onAddToCart, cart, onRemoveFromCart, onClearCart, o
   const handleDownloadPDF = () => {
     if (!lastCompletedSale) return;
 
-    const element = document.createElement('div');
-    element.style.padding = '40px';
-    element.style.fontFamily = 'monospace';
-    element.style.color = '#000';
-    element.style.backgroundColor = '#fff';
+    try {
+      const element = document.createElement('div');
+      element.style.padding = '40px';
+      element.style.fontFamily = 'monospace';
+      element.style.color = '#000';
+      element.style.backgroundColor = '#fff';
 
-    const itemsHtml = lastCompletedSale.items.map(item => `
-      <div style="display: flex; justify-content: space-between; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 5px;">
-        <span style="flex: 1;">${item.quantity}x ${item.productName}</span>
-        <span style="margin-left: 20px;">${formatCurrency(item.subtotal)}</span>
-      </div>
-    `).join('');
-
-    const notesHtml = lastCompletedSale.notes ? `
-      <div style="margin-top: 20px; border-top: 1px solid #ccc; padding-top: 10px; font-size: 11px; color: #444;">
-        <p><strong>OBSERVAÇÕES:</strong></p>
-        <p style="white-space: pre-wrap;">${lastCompletedSale.notes}</p>
-      </div>
-    ` : '';
-
-    element.innerHTML = `
-      <div style="max-width: 400px; margin: 0 auto;">
-        <div style="text-align:center; margin-bottom: 30px;">
-          <h1 style="margin: 0; font-size: 24px; color: #4f46e5;">${storeConfig?.name || 'AURA POS'}</h1>
-          <p style="margin: 5px 0; color: #666; font-size: 14px;">${storeConfig?.subtitle || ''}</p>
-          <p style="margin: 5px 0; color: #999; font-size: 12px;">CNPJ: ${storeConfig?.cnpj || ''}</p>
+      const itemsHtml = lastCompletedSale.items.map(item => `
+        <div style="display: flex; justify-content: space-between; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 5px;">
+          <span style="flex: 1;">${item.quantity}x ${item.productName}</span>
+          <span style="margin-left: 20px;">${formatCurrency(item.subtotal)}</span>
         </div>
-        
-        <div style="margin-bottom: 20px; font-size: 12px; color: #333;">
-          <p><strong>DATA:</strong> ${formatDate(lastCompletedSale.timestamp)}</p>
-          <p><strong>PEDIDO:</strong> #${lastCompletedSale.id.toUpperCase()}</p>
-          <p><strong>PAGAMENTO:</strong> ${lastCompletedSale.paymentMethod.toUpperCase()}</p>
-        </div>
+      `).join('');
 
-        <div style="margin-bottom: 30px;">
-          <div style="display: flex; justify-content: space-between; font-weight: bold; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 10px; font-size: 12px;">
-            <span>ITEM</span>
-            <span>SUBTOTAL</span>
+      const notesHtml = lastCompletedSale.notes ? `
+        <div style="margin-top: 20px; border-top: 1px solid #ccc; padding-top: 10px; font-size: 11px; color: #444;">
+          <p><strong>OBSERVAÇÕES:</strong></p>
+          <p style="white-space: pre-wrap;">${lastCompletedSale.notes}</p>
+        </div>
+      ` : '';
+
+      element.innerHTML = `
+        <div style="max-width: 400px; margin: 0 auto;">
+          <div style="text-align:center; margin-bottom: 30px;">
+            <h1 style="margin: 0; font-size: 24px; color: #4f46e5;">${storeConfig?.name || 'AURA POS'}</h1>
+            <p style="margin: 5px 0; color: #666; font-size: 14px;">${storeConfig?.subtitle || ''}</p>
+            <p style="margin: 5px 0; color: #999; font-size: 12px;">CNPJ: ${storeConfig?.cnpj || ''}</p>
           </div>
-          ${itemsHtml}
+          
+          <div style="margin-bottom: 20px; font-size: 12px; color: #333;">
+            <p><strong>DATA:</strong> ${formatDate(lastCompletedSale.timestamp)}</p>
+            <p><strong>PEDIDO:</strong> #${lastCompletedSale.id.toUpperCase()}</p>
+            <p><strong>PAGAMENTO:</strong> ${lastCompletedSale.paymentMethod.toUpperCase()}</p>
+          </div>
+
+          <div style="margin-bottom: 30px;">
+            <div style="display: flex; justify-content: space-between; font-weight: bold; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 10px; font-size: 12px;">
+              <span>ITEM</span>
+              <span>SUBTOTAL</span>
+            </div>
+            ${itemsHtml}
+          </div>
+
+          <div style="text-align: right; margin-top: 20px;">
+            <p style="font-size: 14px; margin-bottom: 5px;">Subtotal: ${formatCurrency(lastCompletedSale.total)}</p>
+            <h2 style="font-size: 24px; margin: 0; color: #000;">TOTAL: ${formatCurrency(lastCompletedSale.total)}</h2>
+          </div>
+
+          ${notesHtml}
+
+          <div style="text-align: center; margin-top: 40px; padding-top: 20px; border-top: 1px dashed #ccc; font-size: 12px; color: #666;">
+            <p>${storeConfig?.footerMessage || 'Obrigado pela preferência!'}</p>
+            <p style="font-style: italic; margin-top: 5px;">${storeConfig?.address || ''}</p>
+          </div>
         </div>
+      `;
 
-        <div style="text-align: right; margin-top: 20px;">
-          <p style="font-size: 14px; margin-bottom: 5px;">Subtotal: ${formatCurrency(lastCompletedSale.total)}</p>
-          <h2 style="font-size: 24px; margin: 0; color: #000;">TOTAL: ${formatCurrency(lastCompletedSale.total)}</h2>
-        </div>
+      const opt = {
+        margin:       10,
+        filename:     `recibo-${lastCompletedSale.id}.pdf`,
+        image:        { type: 'jpeg', quality: 0.98 },
+        html2canvas:  { scale: 2, useCORS: true },
+        jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      } as any;
 
-        ${notesHtml}
-
-        <div style="text-align: center; margin-top: 40px; padding-top: 20px; border-top: 1px dashed #ccc; font-size: 12px; color: #666;">
-          <p>${storeConfig?.footerMessage || 'Obrigado pela preferência!'}</p>
-          <p style="font-style: italic; margin-top: 5px;">${storeConfig?.address || ''}</p>
-        </div>
-      </div>
-    `;
-
-    const opt = {
-      margin:       10,
-      filename:     `recibo-${lastCompletedSale.id}.pdf`,
-      image:        { type: 'jpeg', quality: 0.98 },
-      html2canvas:  { scale: 2, useCORS: true },
-      jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
-    } as any;
-
-    html2pdf().set(opt).from(element).save();
+      html2pdf().set(opt).from(element).save();
+    } catch (err) {
+      console.error("PDF generation failed:", err);
+      // Fallback: the Success Modal is still there, user can try printing manually.
+    }
   };
 
   const handleComplete = async (method: string) => {
@@ -466,14 +479,27 @@ function POSView({ products, onAddToCart, cart, onRemoveFromCart, onClearCart, o
     try {
       await onCompleteSale(method, notes);
       setNotes('');
+      // We don't close checkout modal immediately if we want to show success state differently
+      // but here we are using a separate success modal, so closing checkout is fine.
       setIsCheckoutOpen(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Erro ao completar venda:", error);
-      alert("Não foi possível finalizar a venda. Verifique sua conexão.");
+      const message = error?.message || "Verifique sua conexão";
+      alert(`Não foi possível finalizar a venda: ${message}`);
     } finally {
       setIsProcessing(false);
     }
   };
+
+  useEffect(() => {
+    if (lastCompletedSale) {
+      // Small timeout to ensure the success modal has started to mount/render
+      const timer = setTimeout(() => {
+        handleDownloadPDF();
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [lastCompletedSale]);
 
   return (
     <motion.div 

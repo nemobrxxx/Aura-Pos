@@ -13,7 +13,7 @@ service cloud.firestore {
     }
 
     function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId && request.auth.token.email_verified == true;
+      return isSignedIn() && request.auth.uid == userId;
     }
 
     function isValidId(id) {
@@ -32,7 +32,6 @@ service cloud.firestore {
 
     function isValidProduct(data) {
       return data.keys().hasAll(['id', 'name', 'sku', 'price', 'stock', 'category', 'createdAt', 'updatedAt']) &&
-             data.keys().size() <= 9 &&
              data.id is string && data.id.size() <= 128 &&
              data.name is string && data.name.size() <= 200 &&
              data.sku is string && data.sku.size() <= 100 &&

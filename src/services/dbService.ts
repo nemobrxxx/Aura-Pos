@@ -178,23 +178,30 @@ class DatabaseService {
 
     try {
       await runTransaction(db, async (transaction) => {
-        // 1. Record the sale
-        const saleRef = doc(collection(db, salesPath), sale.id);
-        transaction.set(saleRef, sale);
-
-        // 2. Update stock for each item
+        // 1. Realizar todas as LEITURAS primeiro
+        const productUpdates = [];
         for (const item of sale.items) {
           const productRef = doc(db, productsPath, item.productId);
           const productDoc = await transaction.get(productRef);
           
           if (productDoc.exists()) {
             const productData = productDoc.data() as Product;
-            const newStock = productData.stock - item.quantity;
-            transaction.update(productRef, {
-              stock: newStock,
-              updatedAt: Date.now()
+            productUpdates.push({
+              ref: productRef,
+              newStock: productData.stock - item.quantity
             });
           }
+        }
+
+        // 2. Realizar todas as GRAVAÇÕES depois
+        const saleRef = doc(collection(db, salesPath), sale.id);
+        transaction.set(saleRef, sale);
+
+        for (const update of productUpdates) {
+          transaction.update(update.ref, {
+            stock: update.newStock,
+            updatedAt: Date.now()
+          });
         }
       });
     } catch (error) {
