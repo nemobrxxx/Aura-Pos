@@ -1,0 +1,76 @@
+{
+  "entities": {
+    "Product": {
+      "title": "Product",
+      "description": "Store item available for sale",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "sku": { "type": "string" },
+        "price": { "type": "number" },
+        "stock": { "type": "number" },
+        "category": { "type": "string" },
+        "description": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["id", "name", "sku", "price", "stock", "category", "createdAt", "updatedAt"]
+    },
+    "Sale": {
+      "title": "Sale",
+      "description": "A completed transaction",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "total": { "type": "number" },
+        "timestamp": { "type": "number" },
+        "paymentMethod": { "type": "string", "enum": ["cash", "card", "pix"] },
+        "discount": { "type": "number" },
+        "notes": { "type": "string" },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "productId": { "type": "string" },
+              "productName": { "type": "string" },
+              "quantity": { "type": "number" },
+              "priceAtSale": { "type": "number" },
+              "subtotal": { "type": "number" }
+            }
+          }
+        }
+      },
+      "required": ["id", "total", "timestamp", "paymentMethod", "discount", "items"]
+    },
+    "StoreConfig": {
+      "title": "StoreConfig",
+      "description": "Store settings and details",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "subtitle": { "type": "string" },
+        "cnpj": { "type": "string" },
+        "address": { "type": "string" },
+        "phone": { "type": "string" },
+        "footerMessage": { "type": "string" }
+      },
+      "required": ["name", "subtitle", "cnpj", "address", "phone", "footerMessage"]
+    }
+  },
+  "firestore": {
+    "users/{userId}/products": {
+      "schema": "Product",
+      "description": "User's products"
+    },
+    "users/{userId}/sales": {
+      "schema": "Sale",
+      "description": "User's sales history"
+    },
+    "users/{userId}/config": {
+      "schema": "StoreConfig",
+      "description": "User's store configuration"
+    }
+  }
+}
