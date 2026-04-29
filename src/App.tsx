@@ -72,9 +72,9 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  async function loadData() {
+  async function loadData(silent = false) {
     if (!auth.currentUser) return;
-    setIsLoading(true);
+    if (!silent) setIsLoading(true);
     try {
       const config = await dbService.getStoreConfig();
       setStoreConfig(config);
@@ -82,7 +82,7 @@ export default function App() {
       let p = await dbService.getProducts();
       let s = await dbService.getSales();
       
-      if (p.length === 0) {
+      if (p.length === 0 && !silent) {
         const samples: Product[] = [
           { id: '1', name: 'Arroz 5kg', sku: 'ARRZ001', price: 25.90, stock: 50, category: 'Alimentos', createdAt: Date.now(), updatedAt: Date.now() },
           { id: '2', name: 'Leite Integral 1L', sku: 'LEIT002', price: 5.50, stock: 120, category: 'Laticínios', createdAt: Date.now(), updatedAt: Date.now() },
@@ -100,7 +100,7 @@ export default function App() {
     } catch (error) {
       console.error('Failed to load data', error);
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   }
 
@@ -169,10 +169,15 @@ export default function App() {
       notes
     };
 
-    await dbService.saveSale(newSale);
-    await loadData();
-    setCart([]);
-    setLastCompletedSale(newSale);
+    try {
+      await dbService.saveSale(newSale);
+      await loadData(true); // Silent reload
+      setCart([]);
+      setLastCompletedSale(newSale);
+    } catch (error) {
+      console.error("Erro ao salvar venda:", error);
+      throw error; // Re-throw to be caught by POSView
+    }
   };
 
   if (isLoading) {
@@ -376,6 +381,7 @@ function POSView({ products, onAddToCart, cart, onRemoveFromCart, onClearCart, o
   const [search, setSearch] = useState('');
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [notes, setNotes] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const filteredProducts = products.filter((p: Product) => 
     p.name.toLowerCase().includes(search.toLowerCase()) || 
@@ -454,10 +460,19 @@ function POSView({ products, onAddToCart, cart, onRemoveFromCart, onClearCart, o
     html2pdf().set(opt).from(element).save();
   };
 
-  const handleComplete = (method: string) => {
-    onCompleteSale(method, notes);
-    setNotes('');
-    setIsCheckoutOpen(false);
+  const handleComplete = async (method: string) => {
+    if (isProcessing) return;
+    setIsProcessing(true);
+    try {
+      await onCompleteSale(method, notes);
+      setNotes('');
+      setIsCheckoutOpen(false);
+    } catch (error) {
+      console.error("Erro ao completar venda:", error);
+      alert("Não foi possível finalizar a venda. Verifique sua conexão.");
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   return (
@@ -686,10 +701,22 @@ function POSView({ products, onAddToCart, cart, onRemoveFromCart, onClearCart, o
 
                 <div>
                   <label className="text-sm font-bold text-slate-500 mb-4 block uppercase tracking-widest text-[10px]">Escolha a Forma de Pagamento</label>
-                  <div className="grid grid-cols-3 gap-3">
-                    <PaymentOption icon="💵" label="Dinheiro" onClick={() => handleComplete('cash')} />
-                    <PaymentOption icon="💳" label="Cartão" onClick={() => handleComplete('card')} />
-                    <PaymentOption icon="💠" label="PIX" onClick={() => handleComplete('pix')} />
+                  <div className={cn("grid grid-cols-3 gap-3", isProcessing && "opacity-50 pointer-events-none")}>
+                    <PaymentOption 
+                      icon={isProcessing ? "⏳" : "💵"} 
+                      label={isProcessing ? "..." : "Dinheiro"} 
+                      onClick={() => handleComplete('cash')} 
+                    />
+                    <PaymentOption 
+                      icon={isProcessing ? "⏳" : "💳"} 
+                      label={isProcessing ? "..." : "Cartão"} 
+                      onClick={() => handleComplete('card')} 
+                    />
+                    <PaymentOption 
+                      icon={isProcessing ? "⏳" : "💠"} 
+                      label={isProcessing ? "..." : "PIX"} 
+                      onClick={() => handleComplete('pix')} 
+                    />
                   </div>
                 </div>
 
