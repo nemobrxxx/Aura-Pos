@@ -294,7 +294,7 @@ export default function App() {
       </main>
 
       {/* Bottom Navigation (Mobile) */}
-      <nav className="md:hidden fixed bottom-6 left-1/2 -translate-x-1/2 bg-white/80 backdrop-blur-lg border border-slate-200/50 rounded-3xl shadow-2xl px-6 py-3 flex items-center gap-6 z-50">
+      <nav className="md:hidden fixed bottom-4 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-md border border-slate-200/60 rounded-2xl shadow-xl px-4 py-2 flex items-center gap-5 z-50">
         <NavIcon icon={ShoppingCart} active={currentView === 'pos'} onClick={() => setCurrentView('pos')} />
         <NavIcon icon={Package} active={currentView === 'inventory'} onClick={() => setCurrentView('inventory')} />
         <NavIcon icon={History} active={currentView === 'history'} onClick={() => setCurrentView('history')} />
@@ -367,11 +367,11 @@ function NavIcon({ icon: Icon, active, onClick, label }: { icon: any, active: bo
     <button 
       onClick={onClick}
       className={cn(
-        "group relative flex flex-col items-center justify-center p-3 rounded-2xl transition-all duration-200",
+        "group relative flex flex-col items-center justify-center p-2 rounded-xl transition-all duration-200",
         active ? "bg-indigo-50 text-indigo-600 shadow-sm" : "text-slate-400 hover:text-slate-600 hover:bg-slate-100"
       )}
     >
-      <Icon size={24} strokeWidth={active ? 2.5 : 2} />
+      <Icon size={18} strokeWidth={active ? 2.5 : 2} />
       {label && <span className="text-[10px] mt-1 font-semibold md:hidden">{label}</span>}
       {active && (
         <motion.div 
@@ -509,7 +509,7 @@ function POSView({ products, onAddToCart, cart, onRemoveFromCart, onClearCart, o
       className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full overflow-hidden"
     >
       {/* Products Column (Inventory Selection) */}
-      <div className="lg:col-span-1 bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col overflow-hidden h-[calc(100vh-140px)]">
+      <div className="lg:col-span-1 bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col overflow-hidden h-[calc(100vh-140px)] mb-4 lg:mb-0">
         <div className="p-4 border-b border-slate-100 bg-slate-50">
           <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 block">Inventário</label>
           <div className="relative">
@@ -563,7 +563,7 @@ function POSView({ products, onAddToCart, cart, onRemoveFromCart, onClearCart, o
       </div>
 
       {/* Cart Column */}
-      <div className="lg:col-span-1 flex flex-col bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden h-[calc(100vh-140px)]">
+      <div className="lg:col-span-1 flex flex-col bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden h-[calc(100vh-140px)] pb-16 lg:pb-0">
         <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
           <h2 className="text-[10px] font-bold uppercase tracking-widest text-slate-600">Carrinho de Vendas</h2>
           {cart.length > 0 && (
